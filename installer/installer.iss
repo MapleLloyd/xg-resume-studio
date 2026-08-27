@@ -11,6 +11,8 @@
 #define MyAppExeName "滴鱼简历助手.exe"
 
 [Setup]
+; 脚本在 installer/ 下，源码路径基于仓库根目录
+SourceDir=..
 AppId={{8F3B0A2E-3D6C-4E9B-A5C1-2E7D9F0A1B3C}
 AppName={#MyAppFullName}
 AppVersion={#MyAppVersion}
