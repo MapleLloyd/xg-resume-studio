@@ -1,7 +1,7 @@
-name: Build Windows EXE
+name: Build Windows EXE + Installer
 
 # 触发方式：
-#   1. 推送 v* 标签（如 v1.0.0）→ 构建并发布 Release
+#   1. 推送 v* 标签（如 v1.1.0）→ 构建并发布 Release
 #   2. 手动在 Actions 页面点 Run workflow → 仅构建出产物供测试
 on:
   push:
@@ -40,7 +40,7 @@ jobs:
           --exclude-module pytest
           --exclude-module ruff
 
-      - name: Smoke test (server starts)
+      - name: Smoke test (server starts, page content + LAN listener)
         run: |
           Start-Process -FilePath ".\dist\滴鱼简历助手\滴鱼简历助手.exe" -PassThru | Out-Null
           Start-Sleep -Seconds 25
@@ -50,20 +50,38 @@ jobs:
               $r = Invoke-WebRequest -Uri "http://127.0.0.1:$p/" -UseBasicParsing -TimeoutSec 5
               $lanListener = Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue |
                 Where-Object { $_.LocalAddress -eq "0.0.0.0" }
-              if ($r.StatusCode -eq 200 -and $lanListener) { $ok = $true; break }
+              if ($r.StatusCode -eq 200 -and $r.Content -match "滴鱼简历助手" -and $lanListener) { $ok = $true; break }
             } catch { }
           }
-          if (-not $ok) { throw "EXE smoke test failed: HTTP unavailable or LAN listener missing on 8000~8010" }
-          Write-Host "Smoke test passed (local HTTP + LAN listener)."
+          if (-not $ok) { throw "EXE smoke test failed: HTTP/page content/LAN listener missing on 8000~8010" }
+          Write-Host "Smoke test passed (HTTP 200 + page content + LAN listener)."
 
       - name: Clean test data
         run: Remove-Item -Recurse -Force "dist/滴鱼简历助手/data" -ErrorAction SilentlyContinue
 
-      - name: Upload artifact (for testing)
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Build Installer (Inno Setup)
+        shell: pwsh
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          & $iscc "installer\installer.iss" /DMyAppVersion="${{ github.ref_name }}" /O"$PWD\dist-installer"
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed with exit code $LASTEXITCODE" }
+          Get-ChildItem "dist-installer" | Select-Object Name, Length
+
+      - name: Upload portable artifact (for testing)
         uses: actions/upload-artifact@v4
         with:
           name: XG-Resume-Studio-portable
           path: dist/滴鱼简历助手/
+          retention-days: 14
+
+      - name: Upload installer artifact (for testing)
+        uses: actions/upload-artifact@v4
+        with:
+          name: XG-Resume-Studio-installer
+          path: dist-installer/
           retention-days: 14
 
       - name: Release (only on v* tag)
@@ -71,19 +89,29 @@ jobs:
         shell: pwsh
         run: |
           Compress-Archive -Path "dist/滴鱼简历助手" -DestinationPath "XG-Resume-Studio-${{ github.ref_name }}-win64.zip"
+          $ver = "${{ github.ref_name }}" -replace '^v', ''
           $body = @"
-          ## 滴鱼简历助手 XG Resume Studio ${{ github.ref_name }}
+## 滴鱼简历助手 XG Resume Studio ${{ github.ref_name }}
 
-          - 下载下方 **XG-Resume-Studio-*-win64.zip**，解压后双击「滴鱼简历助手.exe」即可使用
-          - 免安装、离线可用；你的全部数据保存在程序旁的 data 文件夹内
-          - 手机扫码直传已集成并默认开启，可在首页随时关闭，无需额外 BAT
-          - 首次启动如遇 SmartScreen 提示，点「更多信息 → 仍要运行」
-          "@
+### 两种安装方式（任选其一）
+- **安装版（推荐）**：下载 **XG-Resume-Studio-${{ github.ref_name }}-setup.exe**，双击按向导安装；会自动创建「开始菜单」和（可选）桌面快捷方式；卸载时询问是否保留你的数据。
+- **免安装绿色版**：下载 **XG-Resume-Studio-${{ github.ref_name }}-win64.zip**，解压后双击「滴鱼简历助手.exe」即可使用。
+
+> 首次启动如遇 SmartScreen 提示，点「更多信息 → 仍要运行」。全部数据保存在程序旁的 data 文件夹内，升级时保留即可。
+
+### 本次更新（v$ver）
+- 服务端 PDF 导出（无需浏览器打印）；简历多版本（保研版/求职版…）；简历中英文切换
+- 个人资料新增「自我评价」（标签 + 自由文本）；小点 AI 对话改为流式打字输出、可随时停止
+- 局域网扫码直传默认关闭，支持手动指定局域网 IP；上传识别失败时给出可操作诊断
+- 安全与稳定性加固（Cookie 签名、上传体积/页数上限、SQLite WAL 并发优化等）；应用内更新日志页
+"@
           $body | Out-File -FilePath release_body.md -Encoding utf8
 
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: XG-Resume-Studio-*-win64.zip
+          files: |
+            XG-Resume-Studio-*-win64.zip
+            dist-installer/XG-Resume-Studio-*-setup.exe
           body_path: release_body.md

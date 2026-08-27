@@ -720,3 +720,19 @@ input[type=text], input[type=email], input[type=password], select, textarea { mi
   .kpi { padding: 12px 13px; }
   .kpi-num { font-size: 21px; }
 }
+
+
+/* ===== 更新日志页 ===== */
+.changelog { line-height: 1.75; }
+.changelog h1 { font-size: 20px; margin: 18px 0 6px; }
+.changelog h2 { font-size: 17px; margin: 18px 0 6px; color: var(--primary, #0f766e); }
+.changelog h3 { font-size: 14.5px; margin: 12px 0 4px; }
+.changelog p { margin: 6px 0; color: #374151; }
+.changelog ul { margin: 6px 0 10px; padding-left: 22px; }
+.changelog li { margin: 3px 0; color: #374151; }
+.changelog b { color: #111827; }
+
+
+/* ===== 小点流式输出 ===== */
+.bubble.streaming::after { content: "▍"; margin-left: 2px; color: var(--primary, #0f766e); animation: rs-blink 1s steps(1) infinite; }
+@keyframes rs-blink { 50% { opacity: 0; } }

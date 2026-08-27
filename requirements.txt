@@ -9,6 +9,7 @@ pypdfium2>=4.30
 # 1.3+ 声明了 Python<3.13 的上限，3.13/3.14 需停留在 1.2.x
 rapidocr-onnxruntime>=1.2.3,<1.3
 Pillow>=10.0
+reportlab>=4.0
 qrcode>=7.4
 
 # 桌面窗口模式（可选，start_desktop.bat 需要）

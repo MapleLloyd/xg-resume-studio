@@ -45,6 +45,8 @@
 <body>
 <div class="toolbar no-print">
   <a class="btn small" href="/">首页</a>
+  <select id="versionSel" title="简历版本"></select>
+  <button class="btn small" id="btnVersions">版本管理</button>
   <select id="userSel" title="当前账户">
     {% for u in users %}<option value="{{ u.id }}" {{ 'selected' if u.id == cur_uid else '' }}>{{ u.name }}</option>{% endfor %}
   </select>
@@ -56,8 +58,10 @@
     <option value="standard">标准</option>
     <option value="relaxed">宽松</option>
   </select>
+  <button class="btn small" id="langBtn" title="切换简历文案语言（内容数据保持你填写的中文）"></button>
   <span class="spacer"></span>
   <a class="btn small" href="/intro.docx">个人介绍 Word</a>
+  <a class="btn small" href="/resume.pdf">简历 PDF</a>
   <a class="btn small" href="/resume.docx">简历 Word</a>
   <button class="btn primary small" onclick="window.print()">打印 / 存 PDF</button>
 </div>
@@ -70,10 +74,23 @@
 const QS = new URLSearchParams(location.search);
 const CUR_TPL = {{ current_template | tojson }};
 const DENSITY = {{ density | tojson }};
+const CUR_LANG = {{ lang | tojson }};
+const CUR_VER = {{ (current_version.id if current_version else 0) | tojson }};
+const VERSIONS = {{ versions | tojson }};
 const TMETA = {{ tmeta | tojson }};
 const ACCENTS = ["#0f766e", "#1e40af", "#9a3412", "#b91c1c", "#7c3aed", "#222222"];
-const SEC_LABELS = { summary: "个人简介", education: "教育背景", papers: "论文发表",
+const SEC_LABELS = { summary: "个人简介", self_eval: "自我评价", education: "教育背景", papers: "论文发表",
                      projects: "项目经历", awards: "获奖情况", positions: "任职经历", skills: "技能与其他" };
+
+function refreshExportLinks() {
+  const qs = new URLSearchParams();
+  if (CUR_VER) qs.set("v", CUR_VER);
+  if (CUR_LANG === "en") qs.set("lang", "en");
+  const q = qs.toString();
+  document.querySelectorAll('a[href*="/resume.docx"], a[href*="/resume.pdf"]').forEach(a => {
+    a.href = a.href.split("?")[0] + (q ? "?" + q : "");
+  });
+}
 
 function navWith(patch) {
   const q = new URLSearchParams(QS);
@@ -84,6 +101,14 @@ function navWith(patch) {
 }
 
 // ----- 主题色 / 密度 -----
+(() => {
+  const btn = document.getElementById("langBtn");
+  if (btn) {
+    btn.textContent = CUR_LANG === "en" ? "中文" : "English";
+    btn.onclick = () => navWith({ lang: CUR_LANG === "en" ? "zh" : "en" });
+  }
+})();
+
 (function initStyleControls() {
   const cur = "{{ accent }}";
   const box = document.getElementById("swatches");
@@ -92,12 +117,12 @@ function navWith(patch) {
     b.className = "swatch" + (c.toLowerCase() === cur.toLowerCase() ? " on" : "");
     b.style.background = c;
     b.title = c;
-    b.onclick = () => navWith({ accent: c });
+    b.onclick = () => { savePrefs({ accent: c }); navWith({ accent: c }); };
     box.appendChild(b);
   });
   const sel = document.getElementById("densitySel");
   sel.value = DENSITY;
-  sel.addEventListener("change", () => navWith({ density: sel.value }));
+  sel.addEventListener("change", () => { savePrefs({ density: sel.value }); navWith({ density: sel.value }); });
 })();
 
 // ----- 模块显隐与排序 -----
@@ -112,7 +137,7 @@ function applyLayout(layout) {
 }
 
 async function loadAndApplyLayout() {
-  try { applyLayout(await api("/api/layout")); } catch (e) { /* 保持默认 */ }
+  try { applyLayout(await api("/api/layout?v=" + CUR_VER)); } catch (e) { /* 保持默认 */ }
 }
 
 async function openLayoutPanel() {
@@ -137,7 +162,7 @@ async function saveLayout() {
     order.push(key);
     if (!row.querySelector("[data-vis]").checked) hidden.push(key);
   });
-  const r = await api("/api/layout", { method: "PUT", body: { order, hidden } });
+  const r = await api("/api/layout?v=" + CUR_VER, { method: "PUT", body: { order, hidden } });
   closeModal();
   applyLayout(r);
   toast("模块设置已保存");
@@ -189,7 +214,8 @@ document.addEventListener("click", async (e) => {
   }
   const card = e.target.closest(".tcard[data-name]");
   if (card && !e.target.closest("[data-del]")) {
-    navWith({ template: card.dataset.name, accent: null });  // 切模板时回到其默认主题色
+    savePrefs({ template: card.dataset.name, accent: "" });  // 切模板时回到其默认主题色
+    navWith({ template: card.dataset.name, accent: null });
   }
 });
 
@@ -200,6 +226,89 @@ async function saveTemplate() {
     closeModal();
     navWith({ template: val("#tmplName"), accent: null });
   } catch (err) { toast(err.message, 5000); }
+}
+
+function savePrefs(body) {
+  if (!CUR_VER) return;
+  fetch("/api/versions/" + CUR_VER, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  }).catch(() => {});
+}
+
+function tagsText(v) {
+  try { return (JSON.parse(v.self_tags || "[]") || []).join("，"); } catch (e) { return ""; }
+}
+
+(async function initVersions() {
+  const sel = document.getElementById("versionSel");
+  if (!sel) return;
+  VERSIONS.forEach(vr => {
+    const o = document.createElement("option");
+    o.value = vr.id;
+    o.textContent = vr.name + (vr.is_default ? "（默认）" : "");
+    if (vr.id === CUR_VER) o.selected = true;
+    sel.appendChild(o);
+  });
+  sel.addEventListener("change", () => { location.href = "/resume?v=" + sel.value; });
+  document.getElementById("btnVersions").onclick = openVersionManager;
+  refreshExportLinks();
+})();
+
+async function openVersionManager() {
+  const list = await api("/api/versions");
+  const rows = list.map(v => `
+    <div class="sec-row" style="display:block;padding:10px 12px;" data-vid="${v.id}">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <input type="text" class="v-name" value="${esc(v.name)}" style="flex:1;min-width:120px;font-weight:600;">
+        ${v.is_default ? '<span class="tag gray">默认</span>' : `<button class="btn small danger" onclick="delVersion(${v.id})">删除</button>`}
+      </div>
+      <div class="form-group mt8"><label>本版本个人简介（留空 = 用全局资料里的简介）</label>
+        <textarea class="v-summary" style="min-height:64px;">${esc(v.summary || "")}</textarea></div>
+      <div class="form-group mt8"><label>本版本自我评价（留空 = 用全局自我评价）</label>
+        <textarea class="v-self" style="min-height:64px;">${esc(v.self_eval || "")}</textarea></div>
+      <div class="form-group mt8"><label>本版本自我评价标签（逗号分隔）</label>
+        <input type="text" class="v-tags" value="${esc(tagsText(v))}"></div>
+      <button class="btn small ok" onclick="saveVersion(${v.id})">保存本版本</button>
+    </div>`).join("");
+  openModal("简历版本管理",
+    `<p class="hint">每个版本 = 名称 + 模板 + 主题色 + 模块显隐排序 + 各自的个人简介/自我评价；获奖、任职、教育等条目全局共享。工具栏上的模板/主题/密度修改会自动保存到当前版本。</p>${rows}
+    <div style="display:flex;gap:8px;margin-top:12px;">
+      <input type="text" id="newVerName" placeholder="新版本名称，如：保研版 / 求职版" style="flex:1;">
+      <button class="btn small ok" onclick="createVersion()">新建版本</button>
+    </div>`,
+    `<button class="btn" onclick="closeModal()">关闭</button>`);
+}
+
+async function saveVersion(vid) {
+  const row = document.querySelector(`.sec-row[data-vid="${vid}"]`);
+  if (!row) return;
+  const tags = row.querySelector(".v-tags").value.split(/[，,]/).map(s => s.trim()).filter(Boolean);
+  await api("/api/versions/" + vid, { method: "PUT", body: {
+    name: row.querySelector(".v-name").value.trim(),
+    summary: row.querySelector(".v-summary").value,
+    self_eval: row.querySelector(".v-self").value,
+    self_tags: tags,
+  } });
+  toast("版本已保存");
+  openVersionManager();
+}
+
+async function createVersion() {
+  const name = document.getElementById("newVerName").value.trim();
+  if (!name) return toast("请输入版本名称");
+  const r = await api("/api/versions", { method: "POST", body: { name } });
+  toast("已创建，正在切换…");
+  location.href = "/resume?v=" + r.version.id;
+}
+
+async function delVersion(vid) {
+  if (!confirm("确定删除该版本？")) return;
+  await api("/api/versions/" + vid, { method: "DELETE" });
+  toast("已删除");
+  if (vid === CUR_VER) location.href = "/resume";
+  else openVersionManager();
 }
 
 document.getElementById("btnTemplates").onclick = openWall;

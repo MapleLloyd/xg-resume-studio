@@ -62,11 +62,25 @@ def test_open_redirect_blocked(lan_client):
     assert r.json()["next"] == "/"
 
 
-def test_lan_is_enabled_by_default(local_client):
+def test_lan_disabled_by_default(local_client):
+    """#15：扫码直传默认关闭，避免公网/不可信网络下无意暴露服务。"""
     r = local_client.get("/api/mobile/link")
     assert r.status_code == 200
-    assert r.json()["lan"] is True
+    assert r.json()["lan"] is False
     assert r.json()["can_manage"] is True
+
+
+def test_lan_enabled_when_forced_by_env(monkeypatch, tmp_path):
+    """RESUME_LAN=1 启动级覆盖仍可强制开启扫码直传。"""
+    monkeypatch.setenv("RESUME_LAN", "1")
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "lan-on.db"))
+    db.init_db()
+    db.set_setting("initialized", "1")
+    client = TestClient(app, follow_redirects=False, client=("127.0.0.1", 50000))
+    r = client.get("/api/mobile/link")
+    assert r.status_code == 200
+    assert r.json()["lan"] is True
+    monkeypatch.delenv("RESUME_LAN")
 
 
 def test_mobile_link_uses_path_token_without_query(local_client):

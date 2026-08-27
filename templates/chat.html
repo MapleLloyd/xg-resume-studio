@@ -39,6 +39,7 @@
 
   <div class="chat-inputbar">
     <input type="text" id="chatInput" placeholder="和小点说说这份简历要用在哪里…（回车发送）" onkeydown="if(event.key==='Enter')sendMessage()">
+    <button class="send-btn" id="stopBtn" onclick="stopStream()" style="display:none;" aria-label="停止" title="停止生成">&#10005;</button>
     <button class="send-btn" id="sendBtn" onclick="sendMessage()" aria-label="发送">{{ icon("send") }}</button>
   </div>
 </div>
@@ -105,27 +106,100 @@ function typingIndicator() {
   box.scrollTop = box.scrollHeight;
 }
 
+let abortCtrl = null;
+
 async function sendMessage() {
   const input = document.getElementById("chatInput");
   const text = input.value.trim();
   if (!text || busy) return;
   input.value = "";
   addMsg("user", text);
-  typingIndicator();
   busy = true;
   document.getElementById("sendBtn").disabled = true;
+  document.getElementById("stopBtn").style.display = "";
+
+  const box = document.getElementById("chatBox");
+  const row = document.createElement("div");
+  row.className = "msg";
+  row.innerHTML = `${avatarHTML()}<div class="bubble streaming"></div>`;
+  box.appendChild(row);
+  const bubbleEl = row.querySelector(".bubble");
+  let acc = "";
+  let done = false;
+  abortCtrl = new AbortController();
+
   try {
-    const r = await api("/api/chat", { method: "POST", body: { messages: history } });
-    document.getElementById("typing")?.remove();
-    addMsg("assistant", r.reply);
+    const res = await fetch("/api/chat/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: history }),
+      signal: abortCtrl.signal,
+    });
+    if (!res.ok) {
+      let d = {};
+      try { d = await res.json(); } catch (e) { /* 忽略 */ }
+      throw new Error(d.detail || d.error || res.statusText || "请求失败");
+    }
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    try {
+      for (;;) {
+        const { value, done: rd } = await reader.read();
+        if (rd) break;
+        buf += dec.decode(value, { stream: true });
+        let i;
+        while ((i = buf.indexOf("\n\n")) >= 0) {
+          const frame = buf.slice(0, i);
+          buf = buf.slice(i + 2);
+          let evt = "";
+          frame.split("\n").forEach(line => {
+            if (line.startsWith("event:")) { evt = line.slice(6).trim(); return; }
+            if (!line.startsWith("data:")) return;
+            const data = line.slice(5).trim();
+            if (data === "[DONE]") { done = true; return; }
+            try {
+              const obj = JSON.parse(data);
+              if (evt === "error") { throw new Error(obj.detail || "AI 返回错误"); }
+              if (obj.delta) {
+                acc += obj.delta;
+                bubbleEl.textContent = acc;
+                box.scrollTop = box.scrollHeight;
+              }
+            } catch (e) { /* 跳过非 JSON 帧 */ }
+          });
+        }
+      }
+    } catch (err) {
+      if (err.name === "AbortError") { done = true; }
+      else throw err;
+    }
+    if (acc.trim()) {
+      history.push({ role: "assistant", content: acc });
+      saveHistory();
+      bubbleEl.classList.remove("streaming");
+      bubbleEl.insertAdjacentHTML("beforeend",
+        `<div class="apply"><button class="btn small ok" onclick="applySummary(this)">采纳为个人简介</button></div>`);
+    } else if (!abortCtrl.signal.aborted && !done) {
+      throw new Error("小点没有返回内容，请稍后重试");
+    }
   } catch (err) {
-    document.getElementById("typing")?.remove();
-    const box = document.getElementById("chatBox");
-    box.insertAdjacentHTML("beforeend", `<div class="msg"><span class="m-avatar" style="background:var(--danger-soft);color:var(--danger);"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></span><div class="bubble" style="color:var(--danger);">${esc(err.message)}</div></div>`);
+    bubbleEl.remove();
+    box.insertAdjacentHTML("beforeend",
+      `<div class="msg"><span class="m-avatar" style="background:var(--danger-soft);color:var(--danger);"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></span><div class="bubble" style="color:var(--danger);">${esc(err.message)}</div></div>`);
   } finally {
     busy = false;
+    abortCtrl = null;
     document.getElementById("sendBtn").disabled = false;
+    document.getElementById("stopBtn").style.display = "none";
+    document.getElementById("stopBtn").disabled = false;
+    box.scrollTop = box.scrollHeight;
   }
+}
+
+function stopStream() {
+  if (abortCtrl) abortCtrl.abort();
+  document.getElementById("stopBtn").disabled = true;
 }
 
 function quickAsk(text) {

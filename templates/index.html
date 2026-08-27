@@ -24,7 +24,7 @@
 
 <div class="card">
   <h2>{{ icon("upload") }}上传材料</h2>
-  <p class="hint">支持 jpg / png / bmp / webp / pdf / docx。上传后系统会自动读取内容并提取获奖与任职信息，确认后即可入库。</p>
+  <p class="hint">支持 jpg / png / bmp / webp / pdf / docx（单文件 ≤20MB，PDF ≤50 页）。上传后系统会自动读取内容并提取获奖与任职信息；多页 PDF 会逐页识别，文件越大等待越久，请留意下方进度。</p>
   <div class="dropzone" id="dropzone">
     <div class="dz-icon">{{ icon("upload") }}</div>
     <div style="font-weight:600;margin-top:4px;">点击选择或拖拽文件到这里</div>
@@ -55,6 +55,12 @@
       <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
         <a class="btn small" id="qrLink" target="_blank" href="#">打开直传页</a>
         <button class="btn small" id="rotateQrBtn" onclick="rotateToken()">重置二维码</button>
+      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <label class="hint" for="manualIp" style="margin:0;">手动指定局域网 IP（可选）：</label>
+        <input type="text" id="manualIp" placeholder="如 192.168.1.100" style="max-width:180px;flex:1;min-width:140px;">
+        <button class="btn small" onclick="saveManualIp()">保存</button>
+        <button class="btn small" onclick="clearManualIp()">清除</button>
+      </div>
       </div>
     </div>
   </div>
@@ -269,8 +275,9 @@ function showExtractModal(res) {
     </div>`).join("") : '<div class="empty">没有识别出任职条目</div>';
 
   const isImage = /\.(jpe?g|png|bmp|webp|tiff?)$/i.test(res.file_type || "");
-  openModal(`提取结果：${res.filename}${uploadQueue.length ? `（后面还有 ${uploadQueue.length} 个文件待确认）` : ""}`,
-    `<div class="between">
+  openModal(`提取结果：${res.filename}${res.page_count ? `（PDF ${res.page_count} 页）` : ""}${uploadQueue.length ? `（后面还有 ${uploadQueue.length} 个文件待确认）` : ""}`,
+    `${res.diagnosis ? `<div class="alert-banner" style="margin-bottom:10px;">${esc(res.diagnosis)}</div>` : ""}
+    <div class="between">
        <h3 style="margin:0;">获奖（${awards.length}）</h3>
        <span>
          ${isImage ? `<button class="btn small" onclick="rotateRetry(${res.file_id}, -90)">↺ 左转90°重试</button>
@@ -435,6 +442,8 @@ async function loadQr() {
     const link = document.getElementById("qrLink");
     const rotate = document.getElementById("rotateQrBtn");
     const pairRow = document.getElementById("pairRow");
+    const manualIp = document.getElementById("manualIp");
+    if (manualIp) manualIp.value = info.manual_ip || "";
     toggle.checked = !!info.lan;
     toggle.setAttribute("aria-checked", String(!!info.lan));
     toggle.disabled = !info.can_manage;
@@ -457,7 +466,8 @@ async function loadQr() {
       return;
     }
     box.innerHTML = `<img src="/qr.svg?fmt=png&d=${encodeURIComponent(info.url)}" alt="二维码" style="width:100%;height:100%;border-radius:12px;">`;
-    document.getElementById("qrTip").innerHTML = `手机浏览器打开：<code style="word-break:break-all;">${esc(info.url)}</code>`;
+    document.getElementById("qrTip").innerHTML = `手机浏览器打开：<code style="word-break:break-all;">${esc(info.url)}</code>`
+      + (info.manual_ip ? `<div class="hint mt4" style="color:var(--primary);">已手动指定 IP：${esc(info.manual_ip)}（自动选择被覆盖）</div>` : "");
     document.getElementById("pairCode").textContent = info.pair || "——";
   } catch (e) {
     box.textContent = "加载失败";
@@ -479,6 +489,19 @@ async function toggleLan(control) {
   }
 }
 async function rotateToken() {
+
+async function saveManualIp() {
+  const ip = document.getElementById("manualIp").value.trim();
+  try {
+    await api("/api/mobile/manual-ip", { method: "POST", body: { ip } });
+    toast(ip ? "已手动指定 IP，二维码已更新" : "已清除手动 IP");
+    loadQr();
+  } catch (e) { toast(e.message, 5000); }
+}
+async function clearManualIp() {
+  document.getElementById("manualIp").value = "";
+  await saveManualIp();
+}
   await api("/api/mobile/rotate-token", { method: "POST" });
   toast("二维码已重置，旧链接失效");
   loadQr();

@@ -8,43 +8,51 @@
 </style>
 <div class="scholar">
   <header class="rs-head">
-    {% if profile.photo_path %}<img class="rs-photo" src="{{ profile.photo_path }}" alt="证件照">{% endif %}
+    {% if profile.photo_path %}<img class="rs-photo" src="{{ profile.photo_path }}" alt="{{ L.photo }}">{% endif %}
     <div class="rs-headmain">
-      <div class="rs-name">{{ profile.name or "姓名" }}</div>
+      <div class="rs-name">{{ profile.name or L.name }}</div>
       <div class="rs-contact">
         {% if profile.gender %}<span>{{ profile.gender }}</span>{% endif %}
-        {% if profile.birth_date %}<span>{{ profile.birth_date }}生</span>{% endif %}
-        {% if profile.phone %}<span>电话：{{ profile.phone }}</span>{% endif %}
-        {% if profile.email %}<span>邮箱：{{ profile.email }}</span>{% endif %}
-        {% if profile.hometown %}<span>籍贯：{{ profile.hometown }}</span>{% endif %}
+        {% if profile.birth_date %}<span>{{ profile.birth_date }}{{ L.birth }}</span>{% endif %}
+        {% if profile.phone %}<span>{{ L.phone }}{{ profile.phone }}</span>{% endif %}
+        {% if profile.email %}<span>{{ L.email }}{{ profile.email }}</span>{% endif %}
+        {% if profile.hometown %}<span>{{ L.hometown }}{{ profile.hometown }}</span>{% endif %}
         {% if profile.address %}<span>{{ profile.address }}</span>{% endif %}
       </div>
     </div>
   </header>
 
   <section class="rs-sec" data-sec="summary">
-    <h3 class="rs-h">个人简介<span class="en">STATEMENT</span></h3>
-    {% if profile.summary %}<p class="rs-summary">{{ profile.summary }}</p>{% else %}<p class="rs-empty">（未填写）</p>{% endif %}
+    <h3 class="rs-h">{{ L.summary }}{% if lang != "en" %}<span class="en">STATEMENT</span>{% endif %}</h3>
+    {% if profile.summary %}<p class="rs-summary">{{ profile.summary }}</p>{% else %}<p class="rs-empty">{{ L.empty }}</p>{% endif %}
+  </section>
+
+  <section class="rs-sec" data-sec="self_eval">
+    <h3 class="rs-h">{{ L.self_eval }}{% if lang != "en" %}<span class="en">SELF-EVALUATION</span>{% endif %}</h3>
+    {% if profile.self_eval or profile.self_tags %}
+      {% if profile.self_tags %}<div class="rs-block"><div class="rs-chips">{% for s in profile.self_tags %}<span class="rs-chip">{{ s }}</span>{% endfor %}</div></div>{% endif %}
+      {% if profile.self_eval %}<p class="rs-summary">{{ profile.self_eval }}</p>{% endif %}
+    {% else %}<p class="rs-empty">{{ L.empty }}</p>{% endif %}
   </section>
 
   <section class="rs-sec" data-sec="education">
-    <h3 class="rs-h">教育背景<span class="en">EDUCATION</span></h3>
+    <h3 class="rs-h">{{ L.education }}{% if lang != "en" %}<span class="en">EDUCATION</span>{% endif %}</h3>
     {% if education %}
       {% for e in education %}
       <div class="rs-block">
         <div class="rs-item">
-          <span class="t">{{ e.school or "学校" }}</span>
+          <span class="t">{{ e.school or L.school }}</span>
           <span class="s">{{ e.degree or "" }}{% if e.degree and e.major %} · {% endif %}{{ e.major or "" }}</span>
           <span class="d">{{ e.start }} — {{ e.end }}</span>
         </div>
         {% if e.notes %}<div class="rs-edu-note">{{ e.notes }}</div>{% endif %}
       </div>
       {% endfor %}
-    {% else %}<p class="rs-empty">（未填写）</p>{% endif %}
+    {% else %}<p class="rs-empty">{{ L.empty }}</p>{% endif %}
   </section>
 
   <section class="rs-sec" data-sec="papers">
-    <h3 class="rs-h">论文发表<span class="en">PUBLICATIONS</span></h3>
+    <h3 class="rs-h">{{ L.papers }}{% if lang != "en" %}<span class="en">PUBLICATIONS</span>{% endif %}</h3>
     {% if papers %}
       <div class="rs-papers">
       {% for a in papers %}
@@ -55,27 +63,27 @@
         </div>
       {% endfor %}
       </div>
-    {% else %}<p class="rs-empty">（未填写）</p>{% endif %}
+    {% else %}<p class="rs-empty">{{ L.empty }}</p>{% endif %}
   </section>
 
   <section class="rs-sec" data-sec="projects">
-    <h3 class="rs-h">科研与项目<span class="en">RESEARCH</span></h3>
+    <h3 class="rs-h">{{ L.projects }}{% if lang != "en" %}<span class="en">RESEARCH</span>{% endif %}</h3>
     {% if projects %}
       {% for pr in projects %}
       <div class="rs-block">
         <div class="rs-item">
-          <span class="t">{{ pr.name or "项目名称" }}</span>
+          <span class="t">{{ pr.name or L.project_name }}</span>
           {% if pr.role %}<span class="s">{{ pr.role }}</span>{% endif %}
           <span class="d">{{ pr.start }} — {{ pr.end }}</span>
         </div>
         {% if pr.description %}<div class="rs-desc">{{ pr.description }}</div>{% endif %}
       </div>
       {% endfor %}
-    {% else %}<p class="rs-empty">（未填写）</p>{% endif %}
+    {% else %}<p class="rs-empty">{{ L.empty }}</p>{% endif %}
   </section>
 
   <section class="rs-sec" data-sec="awards">
-    <h3 class="rs-h">获奖情况<span class="en">HONORS</span></h3>
+    <h3 class="rs-h">{{ L.awards }}{% if lang != "en" %}<span class="en">HONORS</span>{% endif %}</h3>
     {% if awards %}
       {% for a in awards %}
       <div class="rs-item">
@@ -84,11 +92,11 @@
         <span class="d">{{ a.date }}</span>
       </div>
       {% endfor %}
-    {% else %}<p class="rs-empty">（未填写）</p>{% endif %}
+    {% else %}<p class="rs-empty">{{ L.empty }}</p>{% endif %}
   </section>
 
   <section class="rs-sec" data-sec="positions">
-    <h3 class="rs-h">学生工作<span class="en">LEADERSHIP</span></h3>
+    <h3 class="rs-h">{{ L.positions }}{% if lang != "en" %}<span class="en">LEADERSHIP</span>{% endif %}</h3>
     {% if positions %}
       {% for p in positions %}
       <div class="rs-block">
@@ -100,18 +108,18 @@
         {% if p.description %}<div class="rs-desc">{{ p.description }}</div>{% endif %}
       </div>
       {% endfor %}
-    {% else %}<p class="rs-empty">（未填写）</p>{% endif %}
+    {% else %}<p class="rs-empty">{{ L.empty }}</p>{% endif %}
   </section>
 
   <section class="rs-sec" data-sec="skills">
-    <h3 class="rs-h">技能与其他<span class="en">SKILLS</span></h3>
+    <h3 class="rs-h">{{ L.skills }}{% if lang != "en" %}<span class="en">SKILLS</span>{% endif %}</h3>
     {% if profile.skills or profile.languages %}
       {% if profile.skills %}
       <div class="rs-block"><div class="rs-chips">{% for s in profile.skills %}<span class="rs-chip">{{ s }}</span>{% endfor %}</div></div>
       {% endif %}
       {% if profile.languages %}
-      <div class="rs-sub">语言能力：{{ profile.languages|join("、") }}</div>
+      <div class="rs-sub">{{ L.languages }}{{ profile.languages|join('、') }}</div>
       {% endif %}
-    {% else %}<p class="rs-empty">（未填写）</p>{% endif %}
+    {% else %}<p class="rs-empty">{{ L.empty }}</p>{% endif %}
   </section>
 </div>

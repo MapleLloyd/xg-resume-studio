@@ -55,7 +55,18 @@
 
 <div class="card">
   <div class="between">
-    <h2 style="margin:0;">{{ icon("grad") }}教育经历</h2>
+    <div class="card">
+  <div class="between">
+    <h2 style="margin:0;">{{ icon("sparkles") }}自我评价</h2>
+    <button class="btn primary" onclick="saveSelfEval()">{{ icon("check") }}保存自我评价</button>
+  </div>
+  <p class="hint">用几个标签概括你的性格与态度（如：认真负责 / 抗压能力强 / 乐于协作），再写一段自由文本。与「个人简介」区分：简介概括履历亮点，这里侧重性格与对待工作学习的态度；会作为简历的独立模块，可显隐排序。</p>
+  <div class="form-group mt8"><label>性格/态度标签（逗号分隔）</label>
+    <input type="text" id="p_self_tags" value="{{ profile.self_tags|join('，') if profile.self_tags else '' }}" placeholder="如：认真负责，抗压能力强，乐于协作">
+  </div>
+  <textarea id="p_self_eval" style="min-height:110px;margin-top:12px;" placeholder="例：对待学习和工作认真负责，具有较强的抗压能力和团队协作精神；做事有计划、有执行力……">{{ profile.self_eval }}</textarea>
+</div>
+<h2 style="margin:0;">{{ icon("grad") }}教育经历</h2>
     <button class="btn primary" onclick="addRow('edu')">{{ icon("plus") }}添加</button>
   </div>
   <div id="eduList" class="mt">
@@ -276,6 +287,14 @@ async function saveSummary() {
   toast("个人简介已保存");
 }
 
+async function saveSelfEval() {
+  await api("/api/profile", { method: "PUT", body: { profile: {
+    self_eval: val("#p_self_eval"),
+    self_tags: val("#p_self_tags").split(/[，,]/).map(s => s.trim()).filter(Boolean),
+  } } });
+  toast("自我评价已保存");
+}
+
 function collectProfilePayload() {
   setVal("#p_hometown", HB.get());
   setVal("#p_address", AD.get());
@@ -285,6 +304,8 @@ function collectProfilePayload() {
       phone: val("#p_phone"), email: val("#p_email"), address: val("#p_address"),
       hometown: val("#p_hometown"),
       summary: val("#p_summary"),
+      self_eval: val("#p_self_eval"),
+      self_tags: val("#p_self_tags").split(/[，,]/).map(s => s.trim()).filter(Boolean),
       skills: val("#p_skills").split(/[，,]/).map(s => s.trim()).filter(Boolean),
       languages: val("#p_langs").split(/[，,]/).map(s => s.trim()).filter(Boolean),
     },
@@ -327,7 +348,7 @@ function scheduleAutoSave() {
 }
 document.addEventListener("input", (e) => {
   if (e.target.type === "file") return;
-  if (e.target.matches("#p_name,#p_gender,#p_birth,#p_phone,#p_email,#p_hb_manual,#p_addr_detail,#p_summary,#p_skills,#p_langs,.c-school,.c-degree,.c-major,.c-start,.c-end,.c-notes,.c-title,.c-authors,.c-venue,.c-year,.c-vol,.c-issue,.c-pages,.c-type,.c-name,.c-role,.c-desc")) {
+  if (e.target.matches("#p_name,#p_gender,#p_birth,#p_phone,#p_email,#p_hb_manual,#p_addr_detail,#p_summary,#p_self_eval,#p_self_tags,#p_skills,#p_langs,.c-school,.c-degree,.c-major,.c-start,.c-end,.c-notes,.c-title,.c-authors,.c-venue,.c-year,.c-vol,.c-issue,.c-pages,.c-type,.c-name,.c-role,.c-desc")) {
     scheduleAutoSave();
   }
 });

@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}更新日志 - 滴鱼简历助手{% endblock %}
+{% block content %}
+{% from "_icons.html" import icon %}
+
+<div class="card">
+  <div class="between">
+    <h2 style="margin:0;">{{ icon("file-text") }}更新日志</h2>
+    <a class="btn small" href="/">返回首页</a>
+  </div>
+  <p class="hint">本地展示的版本更新记录，无需联网。完整历史见 <code>docs/CHANGELOG.md</code>。</p>
+  <div class="changelog mt8">{{ changelog_html | safe }}</div>
+</div>
+
+{% endblock %}

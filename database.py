@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS profile (
     name TEXT DEFAULT '', gender TEXT DEFAULT '', birth_date TEXT DEFAULT '',
     phone TEXT DEFAULT '', email TEXT DEFAULT '', address TEXT DEFAULT '',
     hometown TEXT DEFAULT '',
+    self_eval TEXT DEFAULT '', self_tags TEXT DEFAULT '[]',
     summary TEXT DEFAULT '', skills TEXT DEFAULT '[]', languages TEXT DEFAULT '[]',
     photo_path TEXT DEFAULT ''
 );
@@ -79,6 +80,20 @@ CREATE TABLE IF NOT EXISTS resume_templates (
     name TEXT UNIQUE, title TEXT DEFAULT '', html TEXT DEFAULT '',
     builtin INTEGER DEFAULT 0, created_at TEXT DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS resume_versions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER DEFAULT 1,
+    name TEXT DEFAULT '默认简历',
+    template TEXT DEFAULT 'classic',
+    accent TEXT DEFAULT '',
+    density TEXT DEFAULT 'standard',
+    layout TEXT DEFAULT '',
+    summary TEXT DEFAULT '',
+    self_eval TEXT DEFAULT '',
+    self_tags TEXT DEFAULT '[]',
+    is_default INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS certificates (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER DEFAULT 1,
@@ -107,6 +122,8 @@ MIGRATIONS = [
     ("item_files", "user_id", "INTEGER DEFAULT 1"),
     # 资料细化：籍贯独立字段；论文卷/期/页码（GB/T 7714 完整引用格式）
     ("profile", "hometown", "TEXT DEFAULT ''"),
+    ("profile", "self_eval", "TEXT DEFAULT ''"),
+    ("profile", "self_tags", "TEXT DEFAULT '[]'"),
     ("papers", "volume", "TEXT DEFAULT ''"),
     ("papers", "issue", "TEXT DEFAULT ''"),
     ("papers", "pages", "TEXT DEFAULT ''"),
@@ -136,6 +153,7 @@ def _migrate_profile_drop_check(conn):
             id INTEGER PRIMARY KEY,
             name TEXT DEFAULT '', gender TEXT DEFAULT '', birth_date TEXT DEFAULT '',
             phone TEXT DEFAULT '', email TEXT DEFAULT '', address TEXT DEFAULT '',
+            hometown TEXT DEFAULT '', self_eval TEXT DEFAULT '', self_tags TEXT DEFAULT '[]',
             summary TEXT DEFAULT '', skills TEXT DEFAULT '[]', languages TEXT DEFAULT '[]',
             photo_path TEXT DEFAULT ''
         );
@@ -157,8 +175,10 @@ def ensure_default_user():
 
 
 def get_conn():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=10)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
     return conn
 
 

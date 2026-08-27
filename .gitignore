@@ -21,3 +21,6 @@ XG-Resume-Studio-share.zip
 *.log
 .DS_Store
 Thumbs.db
+# Inno Setup 构建输出
+dist-installer/
+
