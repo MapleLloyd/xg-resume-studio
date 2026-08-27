@@ -5,7 +5,7 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect width='24' height='24' rx='6' fill='%230f766e'/><path d='M13 4H8a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V8z' fill='none' stroke='white' stroke-width='1.6'/><path d='M13 4v4h4' fill='none' stroke='white' stroke-width='1.6' stroke-linejoin='round'/></svg>">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>简历预览 - 滴鱼简历助手</title>
-<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/style.css?v={{ asset_version }}">
 <style>
   .toolbar { max-width: 900px; margin: 16px auto 14px; padding: 0 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
   .toolbar .spacer { flex: 1; }
@@ -65,7 +65,7 @@
 <div class="resume-body rs-d-{{ density }}"><div class="rs-page" style="--r-accent: {{ accent }};">{{ body_html | safe }}</div></div>
 
 <div class="toast"></div>
-<script src="/static/app.js"></script>
+<script src="/static/app.js?v={{ asset_version }}"></script>
 <script>
 const QS = new URLSearchParams(location.search);
 const CUR_TPL = {{ current_template | tojson }};

@@ -28,7 +28,8 @@ def main():
     import uvicorn
     from app import app
 
-    config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning")
+    # 始终监听局域网地址；是否允许远程访问由应用内的扫码直传开关安全控制。
+    config = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="warning")
     server = uvicorn.Server(config)
     threading.Thread(target=server.run, daemon=True).start()
     for _ in range(150):

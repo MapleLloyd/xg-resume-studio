@@ -5,7 +5,7 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect width='24' height='24' rx='6' fill='%230f766e'/><path d='M13 4H8a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V8z' fill='none' stroke='white' stroke-width='1.6'/><path d='M13 4v4h4' fill='none' stroke='white' stroke-width='1.6' stroke-linejoin='round'/></svg>">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}滴鱼简历助手{% endblock %}</title>
-<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/style.css?v={{ asset_version }}">
 </head>
 <body>
 {% from "_icons.html" import icon %}
@@ -70,8 +70,8 @@
 {% block content %}{% endblock %}
 </main>
 <div class="toast"></div>
-<script src="/static/app.js"></script>
-<script src="/static/region.js"></script>
+<script src="/static/app.js?v={{ asset_version }}"></script>
+<script src="/static/region.js?v={{ asset_version }}"></script>
 <script>
 function toggleUserMenu(e) { e.stopPropagation(); const m = document.getElementById("umenu"); m.hidden = !m.hidden; }
 document.addEventListener("click", (e) => {

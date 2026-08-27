@@ -1,5 +1,6 @@
 """滴鱼简历助手 XG Resume Studio —— 本地运行、数据不出电脑的个人简历管理系统。"""
 import io
+import ipaddress
 import json
 import os
 import re
@@ -7,6 +8,7 @@ import secrets
 import shutil
 import socket
 import sqlite3
+import subprocess
 import sys
 import uuid
 from datetime import datetime
@@ -27,6 +29,8 @@ import parsers
 FROZEN = getattr(sys, "frozen", False)
 BASE_DIR = Path(getattr(sys, "_MEIPASS", "")) if FROZEN else Path(__file__).resolve().parent
 APP_ROOT = Path(sys.executable).resolve().parent if FROZEN else BASE_DIR
+# 静态资源版本：每次发布更新后递增，避免浏览器复用旧的 CSS/JS 缓存。
+ASSET_VERSION = "20260826-lan-switch-2"
 # 用户运行时数据统一放在 data/ 下（数据库/备份/上传件），打包分享时整体排除
 RUNTIME_DIR = APP_ROOT / "data"
 UPLOAD_DIR = RUNTIME_DIR / "uploads"
@@ -70,7 +74,7 @@ def _needs_setup() -> bool:
     return db.get_setting("initialized") != "1"
 
 
-# ---------- 局域网配对码（仅 RESUME_LAN=1 时生效） ----------
+# ---------- 局域网扫码直传 ----------
 
 _PAIR_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # 去掉易混淆的 0/O/1/I
 
@@ -87,10 +91,33 @@ def _is_loopback(host: str) -> bool:
     return host in ("127.0.0.1", "::1", "localhost")
 
 
+def _lan_enabled() -> bool:
+    """扫码直传默认开启；前端选择会持久化，环境变量保留为启动级覆盖。"""
+    forced = os.environ.get("RESUME_LAN")
+    if forced in ("0", "1"):
+        return forced == "1"
+    saved = db.get_setting("lan_enabled")
+    if saved in ("0", "1"):
+        return saved == "1"
+    return True
+
+
 @app.middleware("http")
 async def _entry_gate(request, call_next):
     """入口门卫：① 未完成向导 → 重定向 /setup；
-    ② 局域网模式下，非本机设备必须持有效配对 Cookie，否则引导到 /pair 输码。"""
+    ② 直传关闭时拒绝所有远程请求；
+    ③ 直传开启时，非本机设备必须持有效配对 Cookie，否则引导到 /pair 输码。"""
+    client_ip = request.client.host if request.client else ""
+    is_remote = not _is_loopback(client_ip)
+    if is_remote and not _lan_enabled():
+        if request.url.path.startswith("/api/") or request.method != "GET":
+            return JSONResponse({"detail": "手机扫码直传已在电脑端关闭"}, status_code=403)
+        return HTMLResponse(
+            "<meta charset='utf-8'><body style='font-family:sans-serif;text-align:center;padding-top:80px;color:#555'>"
+            "<h3>手机扫码直传已关闭</h3><p>请先在电脑端首页打开扫码直传开关。</p></body>",
+            status_code=403,
+        )
+
     if _needs_setup():
         p = request.url.path
         allowed = ("/setup", "/static/", "/api/setup", "/api/ai/test", "/api/assistant/avatar")
@@ -99,19 +126,17 @@ async def _entry_gate(request, call_next):
                 return JSONResponse({"detail": "请先完成初始化向导", "need_setup": True}, status_code=403)
             return RedirectResponse("/setup")
 
-    if os.environ.get("RESUME_LAN") == "1":
-        client_ip = request.client.host if request.client else ""
-        if not _is_loopback(client_ip):
-            got = request.cookies.get("pair") or ""
-            if not secrets.compare_digest(got, _pair_code()):
-                p = request.url.path
-                if p == "/pair" or p.startswith("/api/pair"):
-                    pass  # 配对页与配对接口本身放行
-                elif p.startswith("/api/") or request.method != "GET":
-                    return JSONResponse({"detail": "请先输入配对码", "need_pair": True}, status_code=403)
-                else:
-                    from urllib.parse import quote
-                    return RedirectResponse("/pair?next=" + quote(p))
+    if is_remote and _lan_enabled():
+        got = request.cookies.get("pair") or ""
+        if not secrets.compare_digest(got, _pair_code()):
+            p = request.url.path
+            if p == "/pair" or p.startswith("/api/pair"):
+                pass  # 配对页与配对接口本身放行
+            elif p.startswith("/api/") or request.method != "GET":
+                return JSONResponse({"detail": "请先输入配对码", "need_pair": True}, status_code=403)
+            else:
+                from urllib.parse import quote
+                return RedirectResponse("/pair?next=" + quote(p))
 
     return await call_next(request)
 
@@ -170,8 +195,9 @@ def _base_ctx(request: Request, **extra):
         "cur_uid": uid,
         "cur_user": db.get_row("users", uid) or {"id": uid, "name": "?", "avatar": ""},
         "users": db.all_rows("users", "id ASC"),
-        "lan_mode": os.environ.get("RESUME_LAN") == "1",
+        "lan_mode": _lan_enabled(),
         "is_remote": not _is_loopback(request.client.host if request.client else "127.0.0.1"),
+        "asset_version": ASSET_VERSION,
     }
     ctx.update(extra)
     return ctx
@@ -368,7 +394,7 @@ def index(request: Request):
         position_count=len(db.get_rows_where("positions", "user_id=?", (uid,))),
         cert_count=len(db.get_rows_where("certificates", "user_id=?", (uid,))),
         has_ai=bool(db.get_setting("api_key")),
-        lan_mode=os.environ.get("RESUME_LAN") == "1",
+        lan_mode=_lan_enabled(),
     ))
 
 
@@ -1063,16 +1089,128 @@ def delete_user(uid: int, response: Response):
 
 # ---------- 手机扫码直传 ----------
 
-def _lan_ip():
-    """探测本机局域网 IP；失败时回环地址（扫码不可用但不报错）。"""
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+def _default_gateway():
+    """跨平台读取默认网关 IPv4；失败返回 None。"""
     try:
-        s.connect(("8.8.8.8", 80))
-        return s.getsockname()[0]
+        if sys.platform.startswith("win"):
+            out = subprocess.run(
+                ["route", "print", "0.0.0.0"],
+                capture_output=True, text=True, timeout=4,
+            ).stdout
+            # 行格式：0.0.0.0 0.0.0.0 网关 接口 度量
+            for line in out.splitlines():
+                parts = line.split()
+                if len(parts) >= 3 and parts[0] == "0.0.0.0" and parts[1] == "0.0.0.0":
+                    for token in parts[2:]:
+                        try:
+                            addr = ipaddress.ip_address(token)
+                        except ValueError:
+                            continue
+                        if (
+                            addr.version == 4
+                            and addr.is_private
+                            and not addr.is_loopback
+                            and not addr.is_unspecified
+                            and not addr.is_link_local
+                            and int(addr) >> 24 not in (100, 198)
+                        ):
+                            return token
+        else:
+            out = subprocess.run(
+                ["netstat", "-rn"],
+                capture_output=True, text=True, timeout=4,
+            ).stdout
+            for line in out.splitlines():
+                parts = line.split()
+                if len(parts) >= 2 and parts[0].lower() in ("default", "0.0.0.0"):
+                    for token in parts[1:]:
+                        try:
+                            addr = ipaddress.ip_address(token)
+                        except ValueError:
+                            continue
+                        if (
+                            addr.version == 4
+                            and addr.is_private
+                            and not addr.is_loopback
+                            and not addr.is_unspecified
+                            and not addr.is_link_local
+                            and int(addr) >> 24 not in (100, 198)
+                        ):
+                            return token
     except Exception:
-        return "127.0.0.1"
-    finally:
+        pass
+    return None
+
+
+def _lan_ip():
+    """枚举本机局域网 IPv4，优先选择与默认网关同网段的私网地址。"""
+    candidates = set()
+    # 1) 主机名解析出的本机地址
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            candidates.add(info[4][0])
+    except OSError:
+        pass
+    try:
+        for ip in socket.gethostbyname_ex(socket.gethostname())[2]:
+            candidates.add(ip)
+    except OSError:
+        pass
+    # 2) 兜底：UDP 探测默认出口地址（仅作候选）
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        candidates.add(s.getsockname()[0])
         s.close()
+    except OSError:
+        pass
+
+    def _is_usable(ip):
+        try:
+            addr = ipaddress.ip_address(ip)
+        except ValueError:
+            return False
+        if addr.version != 4:
+            return False
+        if addr.is_loopback or addr.is_link_local or addr.is_multicast or addr.is_unspecified:
+            return False
+        first = int(addr) >> 24
+        if first == 100:   # CGNAT / Tailscale
+            return False
+        if first == 198:   # 198.18.0.0/15 基准测试网段（常见于 Meta Tunnel 等）
+            return False
+        return True
+
+    usable = [ip for ip in candidates if _is_usable(ip)]
+    if not usable:
+        return "127.0.0.1"
+
+    gateway = _default_gateway()
+    gateway_net = None
+    if gateway:
+        try:
+            gateway_net = ipaddress.ip_network(f"{gateway}/24", strict=False)
+        except ValueError:
+            gateway_net = None
+
+    def _score(ip):
+        addr = ipaddress.ip_address(ip)
+        s = 0
+        if addr.is_private:
+            s += 10
+        first = int(addr) >> 24
+        if first == 192:
+            s += 3
+        elif first == 10:
+            s += 2
+        elif first == 172:
+            s += 1
+        if gateway_net and ipaddress.ip_address(ip) in gateway_net:
+            s += 20
+        return s
+
+    usable.sort(key=_score, reverse=True)
+    return usable[0]
 
 
 def _mobile_token(uid: int, force: bool = False):
@@ -1090,13 +1228,34 @@ def mobile_link(request: Request):
     tok = _mobile_token(uid)
     ip = _lan_ip()
     port = request.url.port or 8000
+    enabled = _lan_enabled()
     return {
-        "url": f"http://{ip}:{port}/m?t={tok}",
+        "url": f"http://{ip}:{port}/m/{tok}",
         "token": tok,
         "ip": ip,
-        "lan": os.environ.get("RESUME_LAN") == "1",
-        "pair": _pair_code() if os.environ.get("RESUME_LAN") == "1" else "",
+        "lan": enabled,
+        "pair": _pair_code() if enabled else "",
+        "can_manage": (
+            _is_loopback(request.client.host if request.client else "")
+            and os.environ.get("RESUME_LAN") not in ("0", "1")
+        ),
     }
+
+
+@app.post("/api/mobile/lan")
+def mobile_lan_toggle(request: Request, payload: dict):
+    """仅电脑本机可以开关远程入口，避免已配对设备修改暴露状态。"""
+    if not _is_loopback(request.client.host if request.client else ""):
+        raise HTTPException(403, "只能在电脑本机开关扫码直传")
+    enabled = payload.get("enabled")
+    if not isinstance(enabled, bool):
+        raise HTTPException(400, "enabled 必须是布尔值")
+    if os.environ.get("RESUME_LAN") in ("0", "1"):
+        raise HTTPException(409, "当前启动方式已固定扫码直传状态")
+    db.set_setting("lan_enabled", "1" if enabled else "0")
+    if enabled:
+        _pair_code()
+    return {"ok": True, "lan": enabled}
 
 
 @app.post("/api/mobile/rotate-token")
@@ -1136,17 +1295,32 @@ def auth_logout(response: Response, payload: dict):
 
 
 @app.get("/qr.svg")
-def qr_svg(d: str = ""):
+def qr_svg(d: str = "", fmt: str = "png"):
+    """生成扫码直传二维码。默认 PNG（相机识别最稳），也支持 ?fmt=svg 兜底。"""
     import qrcode
-    import qrcode.image.svg
     if not d:
         raise HTTPException(400, "缺少二维码内容")
     if len(d) > 512:
         raise HTTPException(400, "二维码内容过长")
-    img = qrcode.make(d, image_factory=qrcode.image.svg.SvgPathImage, box_size=14, border=2)
+    qr = qrcode.QRCode(
+        version=None,
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        box_size=10,
+        border=4,
+    )
+    qr.add_data(d)
+    qr.make(fit=True)
+    if fmt == "svg":
+        import qrcode.image.svg
+        img = qr.make_image(image_factory=qrcode.image.svg.SvgPathImage)
+        buf = io.BytesIO()
+        img.save(buf)
+        return Response(content=buf.getvalue(), media_type="image/svg+xml")
+    from qrcode.image.pil import PilImage
+    img = qr.make_image(image_factory=PilImage)
     buf = io.BytesIO()
-    img.save(buf)
-    return Response(content=buf.getvalue(), media_type="image/svg+xml")
+    img.save(buf, format="PNG")
+    return Response(content=buf.getvalue(), media_type="image/png")
 
 
 @app.get("/m", response_class=HTMLResponse)
@@ -1167,8 +1341,14 @@ def mobile_page(request: Request, t: str = ""):
     })
 
 
-if os.environ.get("RESUME_LAN") == "1":
-    print(f"[LAN] 配对码: {_pair_code()}  （手机等设备首次打开页面时需输入，每次启动刷新）", flush=True)
+@app.get("/m/{token}", response_class=HTMLResponse)
+def mobile_page_path(request: Request, token: str = ""):
+    """令牌走路径（无查询参数），避免部分手机相机在长二维码中丢弃 ?t= 后面内容。"""
+    return mobile_page(request, t=token)
+
+
+if _lan_enabled():
+    print(f"[LAN] 配对码: {_pair_code()}  （手机等设备首次打开页面时需输入）", flush=True)
 
 
 # ---------- 首次启动向导 / 示例数据 ----------

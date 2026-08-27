@@ -11,7 +11,7 @@ from app import app  # noqa: E402
 
 @pytest.fixture()
 def client():
-    return TestClient(app, follow_redirects=False)
+    return TestClient(app, follow_redirects=False, client=("127.0.0.1", 50000))
 
 
 def test_fresh_db_redirects_to_setup(client):

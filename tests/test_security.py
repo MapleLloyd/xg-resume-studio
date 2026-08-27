@@ -15,7 +15,7 @@ def client(monkeypatch, tmp_path):
     monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "sec.db"))
     db.init_db()
     db.set_setting("initialized", "1")
-    return TestClient(app)
+    return TestClient(app, client=("127.0.0.1", 50000))
 
 
 def test_mutation_without_origin_allowed(client):
@@ -39,3 +39,23 @@ def test_same_site_origin_allowed(client):
 def test_qr_length_capped(client):
     r = client.get("/qr.svg", params={"d": "x" * 600})
     assert r.status_code == 400
+
+
+def test_qr_defaults_to_png_with_complete_payload(client):
+    """二维码默认返回 PNG，且内容必须是完整 URL（避免相机截断令牌）。"""
+    import io
+    import cv2
+    from PIL import Image
+
+    url = "http://192.168.10.99:8000/m/abc123def456ghij789klmn0"
+    r = client.get("/qr.svg", params={"fmt": "png", "d": url})
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("image/png")
+    img = Image.open(io.BytesIO(r.content))
+    cv_img = cv2.cvtColor(
+        __import__("numpy").asarray(img.convert("RGB")),
+        cv2.COLOR_RGB2BGR,
+    )
+    det = cv2.QRCodeDetector()
+    data, _, _ = det.detectAndDecode(cv_img)
+    assert data == url

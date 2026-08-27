@@ -43,7 +43,7 @@ if not errorlevel 1 (
 
 echo 正在启动：http://127.0.0.1:!PORT!  浏览器将自动打开，使用期间请勿关闭本窗口。
 start "" /b cmd /c "ping -n 8 127.0.0.1 >nul & start http://127.0.0.1:!PORT!"
-".venv\Scripts\python.exe" -m uvicorn app:app --host 127.0.0.1 --port !PORT!
+".venv\Scripts\python.exe" -m uvicorn app:app --host 0.0.0.0 --port !PORT!
 echo.
 echo 服务已退出。如有报错，请把上方文字拍照发给开发者（邮箱见docs 文件夹内《运行环境配置说明.txt》）。
 pause
