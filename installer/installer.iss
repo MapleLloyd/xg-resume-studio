@@ -30,7 +30,7 @@ CloseApplications=yes
 ; 安装到用户目录，无需管理员权限，程序旁的 data 文件夹可正常读写
 
 [Languages]
-Name: "chinesesimp"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
+Name: "chinesesimp"; MessagesFile: "languages\ChineseSimplified.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
