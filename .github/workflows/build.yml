@@ -91,22 +91,21 @@ jobs:
           Compress-Archive -Path "dist/滴鱼简历助手" -DestinationPath "XG-Resume-Studio-${{ github.ref_name }}-win64.zip"
           $ver = "${{ github.ref_name }}" -replace '^v', ''
           $body = @"
-## 滴鱼简历助手 XG Resume Studio ${{ github.ref_name }}
+          ## 滴鱼简历助手 XG Resume Studio ${{ github.ref_name }}
 
-### 两种安装方式（任选其一）
-- **安装版（推荐）**：下载 **XG-Resume-Studio-${{ github.ref_name }}-setup.exe**，双击按向导安装；会自动创建「开始菜单」和（可选）桌面快捷方式；卸载时询问是否保留你的数据。
-- **免安装绿色版**：下载 **XG-Resume-Studio-${{ github.ref_name }}-win64.zip**，解压后双击「滴鱼简历助手.exe」即可使用。
+          ### 两种安装方式（任选其一）
+          - **安装版（推荐）**：下载 **XG-Resume-Studio-${{ github.ref_name }}-setup.exe**，双击按向导安装；会自动创建「开始菜单」和（可选）桌面快捷方式；卸载时询问是否保留你的数据。
+          - **免安装绿色版**：下载 **XG-Resume-Studio-${{ github.ref_name }}-win64.zip**，解压后双击「滴鱼简历助手.exe」即可使用。
 
-> 首次启动如遇 SmartScreen 提示，点「更多信息 → 仍要运行」。全部数据保存在程序旁的 data 文件夹内，升级时保留即可。
+          > 首次启动如遇 SmartScreen 提示，点「更多信息 → 仍要运行」。全部数据保存在程序旁的 data 文件夹内，升级时保留即可。
 
-### 本次更新（v$ver）
-- 服务端 PDF 导出（无需浏览器打印）；简历多版本（保研版/求职版…）；简历中英文切换
-- 个人资料新增「自我评价」（标签 + 自由文本）；小点 AI 对话改为流式打字输出、可随时停止
-- 局域网扫码直传默认关闭，支持手动指定局域网 IP；上传识别失败时给出可操作诊断
-- 安全与稳定性加固（Cookie 签名、上传体积/页数上限、SQLite WAL 并发优化等）；应用内更新日志页
-"@
+          ### 本次更新（v$ver）
+          - 服务端 PDF 导出（无需浏览器打印）；简历多版本（保研版/求职版…）；简历中英文切换
+          - 个人资料新增「自我评价」（标签 + 自由文本）；小点 AI 对话改为流式打字输出、可随时停止
+          - 局域网扫码直传默认关闭，支持手动指定局域网 IP；上传识别失败时给出可操作诊断
+          - 安全与稳定性加固（Cookie 签名、上传体积/页数上限、SQLite WAL 并发优化等）；应用内更新日志页
+          "@
           $body | Out-File -FilePath release_body.md -Encoding utf8
-
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
